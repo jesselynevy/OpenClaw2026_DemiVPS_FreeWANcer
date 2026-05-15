@@ -189,6 +189,13 @@ npm start
 │ • Project marked as active                              │
 │ • Work begins per contract terms                        │
 └─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 6. PAYMENT FINALIZATION                                 │
+│ • Client types: sudah-bayar                             │
+│ • Attaches payment proof                                │
+│ • AI Finalizes the project                              │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
