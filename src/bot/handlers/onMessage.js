@@ -20,6 +20,8 @@ import {
   addPrdRevisionNote,
   setProjectPhase,
   getContractByProjectId,
+  getInvoiceByProjectAndType,
+  setInvoiceStatus,
 } from "../../db/database.js";
 import {
   generatePrdFromChannel,
@@ -46,6 +48,7 @@ import { setProjectDeadline } from "../../db/database.js";
 import {
   postDailySchedule,
   postDeadlineReminders,
+  postNewProjectAlert,
 } from "../../services/schedulerService.js";
 import {
   ActionRowBuilder,
@@ -54,6 +57,7 @@ import {
   AttachmentBuilder,
 } from "discord.js";
 import { generatePrdPdf } from "../../services/pdfService.js";
+import { createAndSendInvoice, formatInvoiceMessage } from "../../services/invoiceService.js";
 
 const histories = new Map();
 const INTAKE_TRIGGER = "mulai-disini";
@@ -215,6 +219,13 @@ async function handleIntake(message) {
         `**Klien baru:** <@${message.author.id}> — <#${privateChannel.id}>`,
       );
   }
+
+  // Trigger updated schedule + reminder to jadwal channel when new project comes in
+  void postNewProjectAlert(message.client, {
+    clientDiscordId: message.author.id,
+    channelId: privateChannel.id,
+    projectName,
+  });
 }
 
 // ─── PRD handlers ──────────────────────────────────────────────────────────────
@@ -428,6 +439,144 @@ async function handleContractSignature(message, project, clientRecord) {
   }
 }
 
+// ─── Invoice / payment ────────────────────────────────────────────────────────
+
+async function handleKirimSketch(message, project, clientRecord) {
+  if (!isFreelancer(message, clientRecord)) {
+    await message.reply("Hanya freelancer yang bisa kirim sketch dan buat invoice DP.");
+    return;
+  }
+  const phase = normalizePhase(project.phase);
+  if (phase !== "execution") {
+    await message.reply(`Perintah ini hanya tersedia di fase eksekusi (sekarang: **${phase}**).`);
+    return;
+  }
+
+  const existing = getInvoiceByProjectAndType(project.id, "dp");
+  if (existing) {
+    await message.reply(
+      `Invoice DP sudah pernah dibuat (#\`${existing.invoice_number}\`). Cek pesan sebelumnya di channel ini.`,
+    );
+    return;
+  }
+
+  await message.reply("Membuat invoice DP 50%...");
+  try {
+    const invoice = await createAndSendInvoice(message.channel, project, clientRecord, "dp");
+    const msg = formatInvoiceMessage(invoice, clientRecord.discord_user_id, "dp");
+    await message.channel.send(msg);
+    setProjectPhase(project.id, "dp_pending");
+    await message.channel.send(
+      "Fase berubah ke **dp_pending** — menunggu pembayaran DP. Bot akan memantau status pembayaran secara otomatis.",
+    );
+  } catch (err) {
+    console.error("[kirim-sketch] invoice error:", err);
+    await message.reply(`Gagal membuat invoice: ${err.message}`);
+  }
+}
+
+async function handleSudahBayar(message, project, clientRecord) {
+  if (!isClient(message, clientRecord)) {
+    await message.reply("Perintah ini hanya untuk klien.");
+    return;
+  }
+  const phase = normalizePhase(project.phase);
+  if (phase !== "dp_pending" && phase !== "final_pending") {
+    await message.reply("Tidak ada tagihan yang sedang menunggu pembayaran saat ini.");
+    return;
+  }
+
+  const label = phase === "dp_pending" ? "DP 50%" : "Pelunasan 50%";
+  const konfirmasiCmd = phase === "dp_pending" ? "`dp-paid`" : "`lunas-final`";
+  const freelancerMentionStr = (() => {
+    const roleId = process.env.FREELANCER_ROLE_ID ?? process.env.STAFF_ROLE_ID;
+    return roleId ? `<@&${roleId}>` : "Freelancer";
+  })();
+
+  await message.channel.send(
+    `📨 ${freelancerMentionStr} — <@${message.author.id}> mengklaim sudah transfer **${label}**.\n` +
+    `Silakan cek rekening kamu, lalu ketik ${konfirmasiCmd} untuk konfirmasi.`,
+  );
+}
+
+async function handleKonfirmasiDp(message, project, clientRecord) {
+  if (!isFreelancer(message, clientRecord)) {
+    await message.reply("Hanya freelancer yang bisa konfirmasi pembayaran DP.");
+    return;
+  }
+  const phase = normalizePhase(project.phase);
+  if (phase !== "dp_pending") {
+    await message.reply(`Konfirmasi DP hanya tersedia saat fase **dp_pending** (sekarang: **${phase}**).`);
+    return;
+  }
+
+  const invoice = getInvoiceByProjectAndType(project.id, "dp");
+  if (invoice) setInvoiceStatus(invoice.id, "paid");
+  setProjectPhase(project.id, "dp_paid");
+
+  await message.channel.send(
+    `✅ **DP terkonfirmasi!** Freelancer sudah memverifikasi pembayaran DP.\n\n` +
+    `Freelancer, silakan lanjutkan pengerjaan. Setelah selesai, kirim versi watermark ke klien lalu ketik \`kirim-watermark\`.`,
+  );
+}
+
+async function handleKirimWatermark(message, project, clientRecord) {
+  if (!isFreelancer(message, clientRecord)) {
+    await message.reply("Hanya freelancer yang bisa kirim watermark dan buat invoice pelunasan.");
+    return;
+  }
+  const phase = normalizePhase(project.phase);
+  if (phase !== "dp_paid") {
+    await message.reply(`Perintah ini hanya tersedia setelah DP dikonfirmasi (sekarang: **${phase}**).`);
+    return;
+  }
+
+  const existing = getInvoiceByProjectAndType(project.id, "final");
+  if (existing) {
+    await message.reply(
+      `Invoice pelunasan sudah pernah dibuat (#\`${existing.invoice_number}\`). Cek pesan sebelumnya.`,
+    );
+    return;
+  }
+
+  await message.reply("Membuat invoice pelunasan 50%...");
+  try {
+    const invoice = await createAndSendInvoice(message.channel, project, clientRecord, "final");
+    const msg = formatInvoiceMessage(invoice, clientRecord.discord_user_id, "final");
+    await message.channel.send(msg);
+    setProjectPhase(project.id, "final_pending");
+    await message.channel.send(
+      `📋 Fase: **final_pending** — menunggu pelunasan dari klien.\n` +
+      `<@${clientRecord.discord_user_id}> Preview watermark sudah dikirim. Selesaikan pembayaran untuk mendapatkan file asli.\n` +
+      `Setelah transfer, freelancer ketik \`konfirmasi-lunas\` untuk konfirmasi.`,
+    );
+  } catch (err) {
+    console.error("[kirim-watermark] invoice error:", err);
+    await message.reply(`Gagal membuat invoice: ${err.message}`);
+  }
+}
+
+async function handleKonfirmasiLunas(message, project, clientRecord) {
+  if (!isFreelancer(message, clientRecord)) {
+    await message.reply("Hanya freelancer yang bisa konfirmasi pelunasan.");
+    return;
+  }
+  const phase = normalizePhase(project.phase);
+  if (phase !== "final_pending") {
+    await message.reply(`Konfirmasi lunas hanya tersedia saat fase **final_pending** (sekarang: **${phase}**).`);
+    return;
+  }
+
+  const invoice = getInvoiceByProjectAndType(project.id, "final");
+  if (invoice) setInvoiceStatus(invoice.id, "paid");
+  setProjectPhase(project.id, "completed");
+
+  await message.channel.send(
+    `🎉 **Pelunasan terkonfirmasi!** Freelancer sudah memverifikasi pembayaran penuh.\n\n` +
+    `<@${clientRecord.discord_user_id}> Terima kasih! Freelancer akan segera mengirimkan file final asli di channel ini.`,
+  );
+}
+
 // ─── Deadline (private channel) ────────────────────────────────────────────────
 
 async function handleSetDeadline(message, project, clientRecord) {
@@ -542,6 +691,26 @@ async function handleProjectChannel(client, message) {
     await handleSetDeadline(message, project, clientRecord);
     return;
   }
+  if (cmd === "kirim-sketch") {
+    await handleKirimSketch(message, project, clientRecord);
+    return;
+  }
+  if (cmd === "kirim-watermark") {
+    await handleKirimWatermark(message, project, clientRecord);
+    return;
+  }
+  if (cmd === "sudah-bayar") {
+    await handleSudahBayar(message, project, clientRecord);
+    return;
+  }
+  if (cmd === "konfirmasi-dp" || cmd === "dp-paid") {
+    await handleKonfirmasiDp(message, project, clientRecord);
+    return;
+  }
+  if (cmd === "konfirmasi-lunas" || cmd === "lunas-final") {
+    await handleKonfirmasiLunas(message, project, clientRecord);
+    return;
+  }
 
   if (phase === "contract_signing") {
     await handleContractSignature(message, project, clientRecord);
@@ -549,6 +718,46 @@ async function handleProjectChannel(client, message) {
   }
 
   if (phase === "execution") {
+    // Freelancer is working — allow file uploads and chat, no commands
+    return;
+  }
+
+  if (phase === "dp_pending") {
+    const dpCmds = ["kirim-sketch", "konfirmasi-dp", "dp-paid", "sudah-bayar", "deadline", "buat-prd", "setuju-prd", "revisi-prd"];
+    if (isFreelancer(message, clientRecord) && (cmd === "konfirmasi-dp" || cmd === "dp-paid")) return; // handled above
+    if (!dpCmds.includes(cmd)) {
+      if (isClient(message, clientRecord)) {
+        await message.reply(
+          `Menunggu pembayaran DP kamu. Bot akan mengirimkan pengingat secara berkala.\n` +
+          `Setelah transfer, beri tahu freelancer agar dikonfirmasi.`,
+        );
+      }
+    }
+    return;
+  }
+
+  if (phase === "dp_paid") {
+    // Freelancer working — allow chat and file uploads
+    return;
+  }
+
+  if (phase === "final_pending") {
+    const finalCmds = ["kirim-watermark", "konfirmasi-lunas", "lunas-final", "sudah-bayar", "deadline"];
+    if (!finalCmds.includes(cmd)) {
+      if (isClient(message, clientRecord)) {
+        await message.reply(
+          `Menunggu pelunasan 50% kamu. Preview watermark sudah dikirim.\n` +
+          `Bot akan mengirimkan pengingat secara berkala. Setelah transfer, beri tahu freelancer.`,
+        );
+      }
+    }
+    return;
+  }
+
+  if (phase === "completed") {
+    if (isClient(message, clientRecord)) {
+      await message.reply("Proyek selesai dan lunas. Terima kasih sudah menggunakan FreeWANcer!");
+    }
     return;
   }
 

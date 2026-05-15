@@ -57,6 +57,20 @@ export function getDb() {
       client_signature_path TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      invoice_number TEXT NOT NULL UNIQUE,
+      amount INTEGER NOT NULL,
+      payment_url TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      doku_reference TEXT,
+      due_date TEXT,
+      last_reminder_at TEXT,
+      reminder_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   migrate(db);
@@ -242,6 +256,49 @@ export function getProjectsDueSoon(withinDays = 3) {
        ORDER BY p.deadline_at ASC`,
     )
     .all(withinDays);
+}
+
+// ─── Invoice functions ─────────────────────────────────────────────────────────
+
+export function insertInvoice({ projectId, type, invoiceNumber, amount, paymentUrl, dueDate }) {
+  return getDb()
+    .prepare(
+      `INSERT INTO invoices (project_id, type, invoice_number, amount, payment_url, due_date)
+       VALUES (?, ?, ?, ?, ?, ?)
+       RETURNING *`,
+    )
+    .get(projectId, type, invoiceNumber, amount, paymentUrl ?? null, dueDate ?? null);
+}
+
+export function getInvoiceByProjectAndType(projectId, type) {
+  return getDb().prepare("SELECT * FROM invoices WHERE project_id = ? AND type = ?").get(projectId, type) ?? null;
+}
+
+export function getPendingInvoices() {
+  return getDb()
+    .prepare(
+      `SELECT i.*, p.channel_id, p.name AS project_name, c.discord_user_id AS client_discord_id
+       FROM invoices i
+       JOIN projects p ON p.id = i.project_id
+       JOIN clients c ON c.id = p.client_id
+       WHERE i.status = 'pending'
+       ORDER BY i.created_at ASC`,
+    )
+    .all();
+}
+
+export function setInvoiceStatus(invoiceId, status, dokuReference = null) {
+  getDb()
+    .prepare("UPDATE invoices SET status = ?, doku_reference = ? WHERE id = ?")
+    .run(status, dokuReference, invoiceId);
+}
+
+export function markInvoiceReminded(invoiceId) {
+  getDb()
+    .prepare(
+      "UPDATE invoices SET last_reminder_at = datetime('now'), reminder_count = reminder_count + 1 WHERE id = ?",
+    )
+    .run(invoiceId);
 }
 
 /** Due soon and not reminded today */

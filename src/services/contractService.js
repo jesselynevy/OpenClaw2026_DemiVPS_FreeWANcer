@@ -30,6 +30,7 @@ function parseContractJson(raw) {
       nama_klien: "Klien",
       nama_freelancer: "Freelancer FreeWANcer",
       scope_of_work: trimmed.slice(0, 2000),
+      total_harga: 0,
       harga_dan_pembayaran: "Menyesuaikan kesepakatan di PRD.",
       batas_revisi: "Menyesuaikan PRD.",
       deadline_dan_penalti: "Menyesuaikan PRD.",
@@ -107,6 +108,10 @@ async function buildContractPdf(data) {
   drawLine(`Klien: ${data.nama_klien}`);
   drawLine(`Freelancer: ${data.nama_freelancer}`);
   drawLine(`Tanggal: ${new Date().toLocaleDateString("id-ID")}`);
+  if (data.total_harga && Number(data.total_harga) > 0) {
+    const rp = Number(data.total_harga).toLocaleString("id-ID");
+    drawLine(`Total Harga: Rp ${rp}`, { bold: true });
+  }
   y -= 12;
 
   const sections = [

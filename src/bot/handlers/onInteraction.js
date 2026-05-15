@@ -6,6 +6,7 @@ import {
   ensureProject,
   getProjectsByClientId,
 } from "../../db/database.js";
+import { postNewProjectAlert } from "../../services/schedulerService.js";
 
 export function onInteraction(client) {
   return async (interaction) => {
@@ -76,6 +77,13 @@ export function onInteraction(client) {
           `Channel: <#${newChannel.id}>`
         );
       }
+
+      const projectName = `${user.username}-project-${count + 1}`;
+      void postNewProjectAlert(client, {
+        clientDiscordId: user.id,
+        channelId: newChannel.id,
+        projectName,
+      });
       return;
     }
   };

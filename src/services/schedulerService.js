@@ -5,6 +5,8 @@ import {
   getActiveProjectsForSchedule,
   getProjectsNeedingReminder,
   markProjectReminded,
+  getPendingInvoices,
+  markInvoiceReminded,
 } from "../db/database.js";
 
 const PHASE_LABEL = {
@@ -94,6 +96,28 @@ export async function postDailySchedule(client) {
   console.log("[scheduler] Daily schedule posted");
 }
 
+/**
+ * Called immediately when a new project is created.
+ * Posts a new-project ping to jadwal channel, then reposts the full daily schedule.
+ */
+export async function postNewProjectAlert(client, { clientDiscordId, channelId, projectName }) {
+  const jadwalId = process.env.JADWAL_HARIAN_CHANNEL_ID;
+  if (!jadwalId) return;
+
+  const channel = await client.channels.fetch(jadwalId).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const mention = freelancerMention();
+  await channel.send(
+    `${mention ? mention + " " : ""}📋 **Proyek baru masuk!**\n` +
+    `**Proyek:** ${projectName}\n` +
+    `**Klien:** <@${clientDiscordId}> → <#${channelId}>\n\n` +
+    `Jadwal harian diperbarui di bawah:`,
+  ).catch(console.error);
+
+  await postDailySchedule(client);
+}
+
 export async function postDeadlineReminders(client) {
   const channelId = process.env.REMINDER_CHANNEL_ID;
   if (!channelId) return;
@@ -146,13 +170,99 @@ export async function postDeadlineReminders(client) {
   console.log(`[scheduler] Reminders posted (${projects.length} projects)`);
 }
 
+function daysSince(dateStr) {
+  if (!dateStr) return 0;
+  const d = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.floor((today - d) / 86400000);
+}
+
+function daysPastDue(dueDateStr) {
+  if (!dueDateStr) return 0;
+  const due = new Date(`${dueDateStr}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((today - due) / 86400000));
+}
+
+async function buildFollowUpText(invoice, daysLate, isUrgent) {
+  const rp = Number(invoice.amount).toLocaleString("id-ID");
+  const label = invoice.type === "dp" ? "DP 50%" : "Pelunasan 50%";
+  const context =
+    `Invoice: #${invoice.invoice_number}\nJumlah: Rp ${rp} (${label})\n` +
+    `Jatuh tempo: ${invoice.due_date}\nTerlambat: ${daysLate} hari`;
+
+  try {
+    return await qwenpawChat({
+      temperature: 0.5,
+      messages: [
+        {
+          role: "system",
+          content: isUrgent
+            ? "Kamu adalah asisten penagihan yang tegas tapi sopan untuk layanan freelance. Tulis follow-up singkat (2-3 kalimat) dalam Bahasa Indonesia mengingatkan klien bahwa pembayaran sudah terlambat dan minta segera diselesaikan. Sertakan opsi menghubungi freelancer jika ada kendala."
+            : "Kamu adalah asisten penagihan yang ramah untuk layanan freelance. Tulis pengingat singkat (2-3 kalimat) dalam Bahasa Indonesia bahwa invoice akan jatuh tempo dan mohon segera dibayar.",
+        },
+        { role: "user", content: context },
+      ],
+    });
+  } catch {
+    const rp2 = Number(invoice.amount).toLocaleString("id-ID");
+    const lbl = invoice.type === "dp" ? "DP 50%" : "Pelunasan 50%";
+    return isUrgent
+      ? `Hai, invoice **#${invoice.invoice_number}** (${lbl}, Rp ${rp2}) sudah terlambat **${daysLate} hari**. Mohon segera selesaikan pembayaran atau hubungi freelancer.`
+      : `Pengingat: invoice **#${invoice.invoice_number}** (${lbl}, Rp ${rp2}) jatuh tempo **${invoice.due_date}**. Mohon segera dibayar.`;
+  }
+}
+
+export async function pollAndNotifyPayments(client) {
+  const invoices = getPendingInvoices();
+  if (invoices.length === 0) return;
+
+  const notifChannelId = process.env.NOTIFICATIONS_CHANNEL_ID;
+  const va = process.env.STATIC_VA_NUMBER ?? "7000108979916425";
+
+  for (const inv of invoices) {
+    const daysCreated = daysSince(inv.created_at);
+    const daysLate = daysPastDue(inv.due_date);
+    const lastReminded = inv.last_reminder_at ? daysSince(inv.last_reminder_at) : 999;
+
+    // Day 1: first reminder, Day 3: follow-up, past due: daily
+    const shouldRemind =
+      (daysCreated >= 1 && inv.reminder_count === 0) ||
+      (daysCreated >= 3 && inv.reminder_count === 1) ||
+      (daysLate > 0 && lastReminded >= 1);
+
+    if (!shouldRemind) continue;
+
+    const isUrgent = daysCreated >= 3 || daysLate > 0;
+    const channel = await client.channels.fetch(inv.channel_id).catch(() => null);
+    if (!channel?.isTextBased()) continue;
+
+    const followUpText = await buildFollowUpText(inv, daysLate, isUrgent);
+    await channel.send(
+      `⏰ <@${inv.client_discord_id}> ${followUpText}\n\n🏦 **Virtual Account:** \`${va}\``,
+    ).catch(console.error);
+
+    if (daysLate > 0 && notifChannelId) {
+      const notifCh = await client.channels.fetch(notifChannelId).catch(() => null);
+      notifCh?.send(
+        `🚨 Invoice \`${inv.invoice_number}\` proyek **${inv.project_name}** terlambat **${daysLate} hari** — verifikasi manual diperlukan. <#${inv.channel_id}>`,
+      ).catch(console.error);
+    }
+
+    markInvoiceReminded(inv.id);
+  }
+}
+
 function parseDailyCron() {
+  // Full cron expression takes priority, e.g. "0 8,14,19 * * *" for 3x a day
+  if (process.env.SCHEDULE_DAILY_CRON) return process.env.SCHEDULE_DAILY_CRON;
+  // Simple HH:MM format (single time)
   const at = process.env.SCHEDULE_DAILY_AT ?? "08:00";
   const m = at.match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return "0 8 * * *";
-  const hour = Number(m[1]);
-  const minute = Number(m[2]);
-  return `${minute} ${hour} * * *`;
+  return `${Number(m[2])} ${Number(m[1])} * * *`;
 }
 
 export function startScheduler(client) {
@@ -174,4 +284,9 @@ export function startScheduler(client) {
     cron.schedule(reminderCron, () => postDeadlineReminders(client), { timezone: tz });
     console.log(`[scheduler] Reminders: ${reminderCron} (${tz})`);
   }
+
+  // Payment polling: every 2 hours
+  const paymentPollCron = process.env.SCHEDULE_PAYMENT_POLL_CRON ?? "0 */2 * * *";
+  cron.schedule(paymentPollCron, () => pollAndNotifyPayments(client), { timezone: tz });
+  console.log(`[scheduler] Payment poll: ${paymentPollCron} (${tz})`);
 }

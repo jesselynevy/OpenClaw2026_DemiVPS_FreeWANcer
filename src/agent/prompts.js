@@ -108,7 +108,8 @@ Output HANYA JSON valid (tanpa markdown), dengan key persis:
   "nama_klien": "string",
   "nama_freelancer": "string atau FreeWANcer",
   "scope_of_work": "string panjang — deliverables dari PRD",
-  "harga_dan_pembayaran": "string — total, DP, termin, metode (transfer/dll)",
+  "total_harga": 0,
+  "harga_dan_pembayaran": "string — cantumkan total harga (Rp), skema DP 50% di awal dan pelunasan 50% setelah final, serta metode pembayaran (transfer/QRIS/dll)",
   "batas_revisi": "string — jumlah revisi & biaya tambahan",
   "deadline_dan_penalti": "string — milestone, deadline, penalti keterlambatan",
   "hak_cipta": "string — kepemilikan aset, lisensi, penggunaan portfolio"
@@ -116,5 +117,7 @@ Output HANYA JSON valid (tanpa markdown), dengan key persis:
 
 Aturan:
 - Bahasa Indonesia formal
-- Hanya gunakan info dari PRD; untuk yang kosong tulis "Menyesuaikan kesepakatan tertulis di channel"
-- Jangan mengarang angka besar yang tidak ada di PRD`;
+- WAJIB: isi "total_harga" dengan angka bulat Rupiah (integer, tanpa titik/koma). Ambil dari budget/harga yang disebutkan di PRD atau chat. Jika tidak ada info harga sama sekali, isi 0.
+- "harga_dan_pembayaran" harus menyebut angka total, skema DP 50% dan pelunasan 50%, serta metode pembayaran
+- Untuk field lain yang kosong, tulis "Menyesuaikan kesepakatan tertulis di channel"
+- Jangan mengarang angka yang tidak ada di PRD`;
