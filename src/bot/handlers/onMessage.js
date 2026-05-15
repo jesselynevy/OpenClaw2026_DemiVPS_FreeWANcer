@@ -13,6 +13,7 @@ import {
   upsertClient,
   ensureProject,
   getProjectByChannelId,
+  getProjectsByClientId,
   getLatestPrd,
   setPrdApproval,
   resetPrdApprovals,
@@ -37,24 +38,35 @@ import {
   downloadSignatureImage,
   isImageAttachment,
 } from "../../services/contractService.js";
-import { parseDeadlineInput, tryExtractDeadlineFromPrd } from "../../services/deadlineParser.js";
+import {
+  parseDeadlineInput,
+  tryExtractDeadlineFromPrd,
+} from "../../services/deadlineParser.js";
 import { setProjectDeadline } from "../../db/database.js";
 import {
   postDailySchedule,
   postDeadlineReminders,
 } from "../../services/schedulerService.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  AttachmentBuilder,
+} from "discord.js";
+import { generatePrdPdf } from "../../services/pdfService.js";
 
 const histories = new Map();
 const INTAKE_TRIGGER = "mulai-disini";
 
-function sanitizeChannelName(username) {
+function sanitizeChannelName(username, suffix = "") {
   return username
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
-    .slice(0, 80)
-    .concat("-project");
+    .slice(0, 70)
+    .concat("-project")
+    .concat(suffix);
 }
 
 function hasFreelancerRole(member) {
@@ -88,6 +100,30 @@ async function sendLong(channel, text, replyToMsg = null) {
   }
 }
 
+async function sendPdfAttachment(
+  channel,
+  content,
+  version,
+  projectName = "proyek",
+) {
+  try {
+    const pdfBuffer = await generatePrdPdf(content, version, projectName);
+    const safeName = projectName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "-")
+      .slice(0, 40);
+    const attachment = new AttachmentBuilder(pdfBuffer, {
+      name: `PRD-v${version}-${safeName}.pdf`,
+    });
+    await channel.send({
+      content: `📎 **PRD v${version} (PDF)**`,
+      files: [attachment],
+    });
+  } catch (err) {
+    console.error("PDF generation failed:", err);
+  }
+}
+
 // ─── Intake (public channel) ───────────────────────────────────────────────────
 
 async function handleIntake(message) {
@@ -100,21 +136,49 @@ async function handleIntake(message) {
   }
 
   const existing = getClientByDiscordId(message.author.id);
-  if (existing?.private_channel_id) {
-    const ch = message.guild.channels.cache.get(existing.private_channel_id);
-    if (ch) {
-      await message.reply(`Kamu sudah punya channel proyek: <#${ch.id}>`);
+
+  if (existing) {
+    const projects = getProjectsByClientId(existing.id);
+    const activeProjects = projects.filter((p) =>
+      message.guild.channels.cache.has(p.channel_id),
+    );
+
+    if (activeProjects.length > 0) {
+      const list = activeProjects
+        .map((p, i) => `${i + 1}. **${p.name}** → <#${p.channel_id}>`)
+        .join("\n");
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`continue_${message.author.id}`)
+          .setLabel("Lanjut Proyek Lama")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`newproject_${message.author.id}`)
+          .setLabel("Mulai Proyek Baru")
+          .setStyle(ButtonStyle.Success),
+      );
+
+      await message.reply({
+        content:
+          `Kamu sudah punya proyek aktif:\n${list}\n\n` +
+          `Mau lanjut proyek lama atau mulai proyek baru?`,
+        components: [row],
+      });
       return;
     }
-    upsertClient(message.author.id, null);
   }
+
+  const projectCount = existing ? getProjectsByClientId(existing.id).length : 0;
+  const suffix = projectCount > 0 ? `-${projectCount + 1}` : "";
+  const channelName = sanitizeChannelName(message.author.username, suffix);
 
   let privateChannel;
   try {
     privateChannel = await createPrivateClientChannel(
       message.guild,
       message.member,
-      sanitizeChannelName(message.author.username),
+      channelName,
     );
   } catch (err) {
     console.error("Failed to create private channel:", err);
@@ -128,12 +192,13 @@ async function handleIntake(message) {
     console.error("Failed to assign Client role:", err);
   }
 
+  const projectName =
+    projectCount > 0
+      ? `${message.author.username}-project-${projectCount + 1}`
+      : `${message.author.username}-project`;
+
   const clientRow = upsertClient(message.author.id, privateChannel.id);
-  ensureProject(
-    clientRow.id,
-    privateChannel.id,
-    `${message.author.username}-project`,
-  );
+  ensureProject(clientRow.id, privateChannel.id, projectName);
 
   await privateChannel.send(
     `Halo <@${message.author.id}>! Selamat datang di **FreeWANcer**.\n\n` +
@@ -177,6 +242,7 @@ async function handleBuatPrd(message, project, clientRecord) {
       },
     );
     await sendLong(message.channel, formatPrdPost(content, version), message);
+    await sendPdfAttachment(message.channel, content, version, project.name);
   } catch (err) {
     console.error("PRD generation failed:", err);
     await message.reply("Gagal membuat PRD.");
@@ -230,7 +296,9 @@ async function handleSetujuPrd(message, project, clientRecord) {
   await message.reply(`${parts.join(" ")}\nMembuat kontrak PDF...`);
   void tryExtractDeadlineFromPrd(project.id, updated.content).then((dl) => {
     if (dl) {
-      message.channel.send(`📅 Deadline proyek tercatat: **${dl}** (dari PRD).`);
+      message.channel.send(
+        `📅 Deadline proyek tercatat: **${dl}** (dari PRD).`,
+      );
     }
   });
   try {
@@ -283,6 +351,7 @@ async function handleRevisiPrd(message, project, clientRecord) {
         prd.id,
       );
       await sendLong(message.channel, formatPrdPost(content, version), message);
+      await sendPdfAttachment(message.channel, content, version, project.name);
     } catch (err) {
       await message.reply("Gagal memperbarui PRD.");
     }
@@ -363,17 +432,23 @@ async function handleContractSignature(message, project, clientRecord) {
 
 async function handleSetDeadline(message, project, clientRecord) {
   if (!isFreelancer(message, clientRecord)) {
-    await message.reply("Hanya freelancer yang bisa set deadline (`deadline YYYY-MM-DD`).");
+    await message.reply(
+      "Hanya freelancer yang bisa set deadline (`deadline YYYY-MM-DD`).",
+    );
     return;
   }
   const raw = message.content.replace(/^deadline\s*/i, "").trim();
   const date = parseDeadlineInput(raw);
   if (!date) {
-    await message.reply("Format: `deadline 2026-05-20` atau `deadline 20/05/2026`");
+    await message.reply(
+      "Format: `deadline 2026-05-20` atau `deadline 20/05/2026`",
+    );
     return;
   }
   setProjectDeadline(project.id, date);
-  await message.reply(`Deadline proyek diset: **${date}** (masuk jadwal harian & reminder).`);
+  await message.reply(
+    `Deadline proyek diset: **${date}** (masuk jadwal harian & reminder).`,
+  );
 }
 
 // ─── Scheduler test commands ───────────────────────────────────────────────────
