@@ -12,8 +12,8 @@
     "node": ">=20"
   },
   "dependencies": {
+    "better-sqlite3": "^11.8.1",
     "discord.js": "^14.17.3",
-    "dotenv": "^16.4.7",
-    "pg": "^8.13.1"
+    "dotenv": "^16.4.7"
   }
 }

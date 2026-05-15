@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createBotClient } from "./bot/client.js";
-import { initDb } from "./db/database.js";
+import { getDb } from "./db/database.js";
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -8,7 +8,7 @@ if (!token) {
   process.exit(1);
 }
 
-await initDb();
+getDb();
 
 const client = createBotClient();
 await client.login(token);

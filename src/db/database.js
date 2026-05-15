@@ -1,61 +1,33 @@
-import pg from "pg";
+import fs from "node:fs";
+import path from "node:path";
+import Database from "better-sqlite3";
 
-const { Pool } = pg;
+/** SQLite: store clients, projects, revision counts */
+let db;
 
-/** PostgreSQL: store clients, projects, revision counts */
-let pool;
-let schemaReady;
+export function getDb() {
+  if (db) return db;
 
-function connectionString() {
-  const url = process.env.DATABASE_URL?.trim();
-  if (url) return url;
+  const file = process.env.DATABASE_PATH ?? "./data/freewancer.sqlite";
+  const dir = path.dirname(file);
+  fs.mkdirSync(dir, { recursive: true });
 
-  const host = process.env.PGHOST ?? "localhost";
-  const port = Number(process.env.PGPORT ?? 5432);
-  const user = process.env.PGUSER;
-  const password = process.env.PGPASSWORD ?? "";
-  const database = process.env.PGDATABASE;
-  if (!user || !database) {
-    throw new Error("Set DATABASE_URL or PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE for PostgreSQL");
-  }
-  const enc = encodeURIComponent(password);
-  return `postgresql://${encodeURIComponent(user)}:${enc}@${host}:${port}/${encodeURIComponent(database)}`;
-}
-
-export function getPool() {
-  if (!pool) {
-    pool = new Pool({ connectionString: connectionString() });
-  }
-  return pool;
-}
-
-/** Run once; safe to call multiple times (deduped). */
-export async function initDb() {
-  if (!schemaReady) {
-    schemaReady = (async () => {
-      const p = getPool();
-      const client = await p.connect();
-      try {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS clients (
-            id BIGSERIAL PRIMARY KEY,
-            discord_user_id TEXT NOT NULL UNIQUE,
-            private_channel_id TEXT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-          );
-          CREATE TABLE IF NOT EXISTS projects (
-            id BIGSERIAL PRIMARY KEY,
-            client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-            name TEXT NOT NULL,
-            phase TEXT NOT NULL DEFAULT 'intake',
-            revision_count INTEGER NOT NULL DEFAULT 0,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-          );
-        `);
-      } finally {
-        client.release();
-      }
-    })();
-  }
-  await schemaReady;
+  db = new Database(file);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS clients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_user_id TEXT NOT NULL UNIQUE,
+      private_channel_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      phase TEXT NOT NULL DEFAULT 'intake',
+      revision_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  return db;
 }
