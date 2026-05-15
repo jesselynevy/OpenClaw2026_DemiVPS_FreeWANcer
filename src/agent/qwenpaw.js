@@ -9,6 +9,10 @@ export async function qwenpawChat({ messages, temperature = 0.7 } = {}) {
     );
   }
 
+  // Calculate timeout based on content size: large requests need more time
+  const contentSize = JSON.stringify(messages).length;
+  const timeout = contentSize > 10000 ? 60000 : 30000;
+
   const res = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -16,7 +20,7 @@ export async function qwenpawChat({ messages, temperature = 0.7 } = {}) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ model, messages, temperature }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(timeout),
   });
 
   if (!res.ok) {

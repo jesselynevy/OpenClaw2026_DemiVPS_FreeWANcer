@@ -23,10 +23,9 @@ export async function generatePrdFromChannel(channel, project, { clientName, rev
     throw new Error("Tidak ada riwayat chat untuk dibuat PRD.");
   }
 
-  const notesBlock =
-    revisionNotes.length > 0
-      ? `\n\nCatatan revisi:\n${revisionNotes.map((n) => `- ${n}`).join("\n")}`
-      : "";
+  // include the latest revision note to reduce token usage
+  const latestNote = revisionNotes.length > 0 ? revisionNotes[revisionNotes.length - 1] : "";
+  const notesBlock = latestNote ? `\n\nCatatan revisi terbaru: ${latestNote}` : "";
 
   const content = await qwenpawChat({
     temperature: 0.4,

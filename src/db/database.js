@@ -76,6 +76,21 @@ function migrate(d) {
       /* column exists */
     }
   }
+  
+  // Add performance indexes (non-blocking, only if missing)
+  const indexes = [
+    "CREATE INDEX IF NOT EXISTS idx_projects_channel ON projects(channel_id)",
+    "CREATE INDEX IF NOT EXISTS idx_prd_project_version ON prd_documents(project_id, version DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_contracts_project ON contracts(project_id)",
+    "CREATE INDEX IF NOT EXISTS idx_clients_discord ON clients(discord_user_id)",
+  ];
+  for (const sql of indexes) {
+    try {
+      d.exec(sql);
+    } catch {
+      /* index exists */
+    }
+  }
 }
 
 export function getClientByDiscordId(discordUserId) {
