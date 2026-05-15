@@ -13,7 +13,7 @@ initDb();
 
 const client = createBotClient();
 client.once("ready", async () => {
-    console.log("Schedulers started");
+    console.log(`Logged in as ${client.user?.tag ?? "unknown"}`);
     startSchedulers(client);
 })
 await client.login(token);

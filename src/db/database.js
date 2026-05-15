@@ -21,6 +21,7 @@ discord_user_id TEXT NOT NULL UNIQUE,
 private_channel_id TEXT,
 created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
 CREATE TABLE IF NOT EXISTS projects (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
@@ -29,26 +30,19 @@ phase TEXT NOT NULL DEFAULT 'intake',
 revision_count INTEGER NOT NULL DEFAULT 0,
 created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
 CREATE TABLE IF NOT EXISTS project_tasks (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-title TEXT NOT NULL,
-description TEXT,
-status TEXT NOT NULL DEFAULT 'pending',
-priority_score REAL DEFAULT 0,
-estimated_hours REAL DEFAULT 1,
-progress INTEGER DEFAULT 0,
-due_date TEXT,
-reminder_sent INTEGER DEFAULT 0,
-created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS schedule_blocks (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-task_id INTEGER NOT NULL REFERENCES project_tasks(id) ON DELETE CASCADE,
-start_time TEXT NOT NULL,
-end_time TEXT NOT NULL,
-calendar_event_id TEXT,
-created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT DEFAULT 'pending',
+  estimated_hours REAL DEFAULT 1,
+  progress INTEGER DEFAULT 0,
+  priority_score REAL DEFAULT 0,
+  due_date TEXT,
+  last_reminder_sent TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
 );
 `);
 }

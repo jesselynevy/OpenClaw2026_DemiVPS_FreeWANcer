@@ -10,7 +10,13 @@ export function createTask({
   return getDb()
     .prepare(
       `INSERT INTO project_tasks
-      (project_id, title, description, estimated_hours, due_date)
+      (
+        project_id,
+        title,
+        description,
+        estimated_hours,
+        due_date
+      )
       VALUES (?, ?, ?, ?, ?)
       RETURNING *`
     )
@@ -43,11 +49,21 @@ export function updateTaskProgress(taskId, progress) {
     .run(progress, taskId);
 }
 
-export function markReminderSent(taskId) {
+export function completeTask(taskId) {
   return getDb()
     .prepare(
       `UPDATE project_tasks
-       SET reminder_sent = 1
+       SET status = 'completed'
+       WHERE id = ?`
+    )
+    .run(taskId);
+}
+
+export function updateLastReminder(taskId) {
+  return getDb()
+    .prepare(
+      `UPDATE project_tasks
+       SET last_reminder_sent = datetime('now')
        WHERE id = ?`
     )
     .run(taskId);

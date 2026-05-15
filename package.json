@@ -16,7 +16,6 @@
     "dayjs": "^1.11.20",
     "discord.js": "^14.17.3",
     "dotenv": "^16.4.7",
-    "googleapis": "^171.4.0",
     "node-cron": "^4.2.1"
   }
 }

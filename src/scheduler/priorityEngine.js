@@ -9,11 +9,10 @@ export function calculatePriority(task) {
   const urgencyWeight = 100 / daysLeft;
 
   const remainingWork =
-    task.estimated_hours * (1 - task.progress / 100);
+    task.estimated_hours *
+    (1 - task.progress / 100);
 
-  const progressPenalty = remainingWork * 5;
-
-  return urgencyWeight + progressPenalty;
+  return urgencyWeight + remainingWork * 5;
 }
 
 export function rankTasks(tasks) {
@@ -22,5 +21,7 @@ export function rankTasks(tasks) {
       ...task,
       priority_score: calculatePriority(task),
     }))
-    .sort((a, b) => b.priority_score - a.priority_score);
+    .sort((a, b) =>
+      b.priority_score - a.priority_score
+    );
 }

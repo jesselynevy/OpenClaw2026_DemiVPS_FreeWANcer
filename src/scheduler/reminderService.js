@@ -1,29 +1,49 @@
 import dayjs from "dayjs";
+
 import {
   getPendingTasks,
-  markReminderSent,
+  updateLastReminder,
 } from "../services/projectService.js";
 
 export async function processReminders(client) {
   const tasks = getPendingTasks();
 
+  const channel = await client.channels.fetch(
+    process.env.REMINDER_CHANNEL_ID
+  );
+
   for (const task of tasks) {
     const due = dayjs(task.due_date);
-    const hoursLeft = due.diff(dayjs(), "hour");
 
-    if (hoursLeft <= 24 && !task.reminder_sent) {
-      const user = await client.users.fetch(
-        process.env.FREELANCER_DISCORD_ID
+    const daysLeft = due.diff(dayjs(), "day");
+
+    let shouldSendReminder = false;
+
+    // Daily reminder when close
+    if (daysLeft <= 3) {
+      shouldSendReminder = true;
+    }
+
+    // Weekly reminder for long deadlines
+    else if (daysLeft % 7 === 0) {
+      shouldSendReminder = true;
+    }
+
+    if (shouldSendReminder) {
+      await channel.send(
+        `⏰ Deadline Reminder
+
+` +
+        `Task: ${task.title}
+` +
+        `Progress: ${task.progress}%
+` +
+        `Deadline: ${task.due_date}
+` +
+        `Remaining: ${daysLeft} days`
       );
 
-      await user.send(
-        `⏰ Deadline Reminder\n\n` +
-        `Task: ${task.title}\n` +
-        `Deadline: ${task.due_date}\n` +
-        `Progress: ${task.progress}%`
-      );
-
-      markReminderSent(task.id);
+      updateLastReminder(task.id);
     }
   }
 }
