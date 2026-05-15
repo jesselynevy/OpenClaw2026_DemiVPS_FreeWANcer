@@ -7,26 +7,31 @@ import {
   upsertClient,
   ensureProject,
   getProjectByChannelId,
+  getProjectsByClientId,
   getLatestPrd,
   setPrdApproval,
   resetPrdApprovals,
   addPrdRevisionNote,
   setProjectPhase,
 } from "../../db/database.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { isHandoffTrigger, stripHandoffTag, executeHandoff } from "../../services/handoff.js";
 import { generatePrdFromChannel, revisePrd, formatPrdPost, askClarification } from "../../services/prdService.js";
+import { generatePrdPdf } from "../../services/pdfService.js";
+import { AttachmentBuilder } from "discord.js";
 
 // In-memory conversation history per channel: channelId → Message[]
 const histories = new Map();
 
-function sanitizeChannelName(username) {
+function sanitizeChannelName(username, suffix = "") {
   return username
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
-    .slice(0, 80)
-    .concat("-project");
+    .slice(0, 70)
+    .concat("-project")
+    .concat(suffix);
 }
 
 function isFreelancer(message, clientRecord) {
@@ -45,22 +50,57 @@ async function sendLong(channel, text, replyToMsg = null) {
   }
 }
 
+async function sendPdfAttachment(channel, content, version, projectName = "proyek") {
+  try {
+    const pdfBuffer = await generatePrdPdf(content, version, projectName);
+    const safeName = projectName.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 40);
+    const attachment = new AttachmentBuilder(pdfBuffer, { name: `PRD-v${version}-${safeName}.pdf` });
+    await channel.send({ content: `📎 **PRD v${version} (PDF)**`, files: [attachment] });
+  } catch (err) {
+    console.error("PDF generation failed:", err);
+  }
+}
+
 // ─── Intake channel: onboard new client ──────────────────────────────────────
 
 async function handleIntake(client, message) {
   const existing = getClientByDiscordId(message.author.id);
 
-  if (existing?.private_channel_id) {
-    const ch = message.guild.channels.cache.get(existing.private_channel_id);
-    if (ch) {
-      await message.reply(`Kamu sudah punya channel proyek, lanjutkan di sana: <#${ch.id}> 👋`);
+  if (existing) {
+    const projects = getProjectsByClientId(existing.id);
+    const activeProjects = projects.filter((p) => message.guild.channels.cache.has(p.channel_id));
+
+    if (activeProjects.length > 0) {
+      const list = activeProjects
+        .map((p, i) => `${i + 1}. **${p.name}** → <#${p.channel_id}>`)
+        .join("\n");
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`continue_${message.author.id}`)
+          .setLabel("Lanjut Proyek Lama")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`newproject_${message.author.id}`)
+          .setLabel("Mulai Proyek Baru")
+          .setStyle(ButtonStyle.Success)
+      );
+
+      await message.reply({
+        content:
+          `Kamu sudah punya proyek aktif:\n${list}\n\n` +
+          `Mau lanjut proyek lama atau mulai proyek baru?`,
+        components: [row],
+      });
       return;
     }
-    // Channel was deleted — reset so they can start fresh
-    upsertClient(message.author.id, null);
   }
 
-  const channelName = sanitizeChannelName(message.author.username);
+  // New client or no active channels — create first/new project channel
+  const projectCount = existing ? getProjectsByClientId(existing.id).length : 0;
+  const suffix = projectCount > 0 ? `-${projectCount + 1}` : "";
+  const channelName = sanitizeChannelName(message.author.username, suffix);
+
   let privateChannel;
   try {
     privateChannel = await createPrivateClientChannel(message.guild, message.member, channelName);
@@ -76,8 +116,12 @@ async function handleIntake(client, message) {
     console.error("Failed to assign Client role:", err);
   }
 
+  const projectName = projectCount > 0
+    ? `${message.author.username}-project-${projectCount + 1}`
+    : `${message.author.username}-project`;
+
   const clientRow = upsertClient(message.author.id, privateChannel.id);
-  ensureProject(clientRow.id, privateChannel.id, `${message.author.username}-project`);
+  ensureProject(clientRow.id, privateChannel.id, projectName);
 
   await privateChannel.send(
     `Halo <@${message.author.id}>! 👋 Selamat datang di **FreeWANcer**.\n\n` +
@@ -115,6 +159,7 @@ async function handleBuatPrd(message, project, clientRecord) {
     });
     setProjectPhase(project.id, "prd_review");
     await sendLong(message.channel, formatPrdPost(content, version), message);
+    await sendPdfAttachment(message.channel, content, version, project.name);
   } catch (err) {
     console.error("PRD generation failed:", err);
     await message.reply("Gagal membuat PRD. Pastikan ada percakapan di channel ini dan API aktif.");
@@ -196,6 +241,7 @@ async function handleRevisiPrd(message, project, clientRecord) {
         message.channel, project, clientRecord.discord_user_id, prd.id
       );
       await sendLong(message.channel, formatPrdPost(content, version), message);
+      await sendPdfAttachment(message.channel, content, version, project.name);
     } catch (err) {
       console.error("PRD revision failed:", err);
       await message.reply("Gagal memperbarui PRD. Coba lagi.");
