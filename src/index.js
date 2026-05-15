@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createBotClient } from "./bot/client.js";
 import { initDb } from "./db/database.js";
+import { startSchedulers } from "./scheduler/cron.js";
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -11,4 +12,8 @@ if (!token) {
 initDb();
 
 const client = createBotClient();
+client.once("ready", async () => {
+    console.log("Schedulers started");
+    startSchedulers(client);
+})
 await client.login(token);
