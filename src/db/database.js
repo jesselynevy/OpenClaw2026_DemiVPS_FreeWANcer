@@ -1,61 +1,52 @@
-import pg from "pg";
+import Database from "better-sqlite3";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const { Pool } = pg;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DB_PATH = path.resolve(__dirname, "../../../freewancer.db");
 
-/** PostgreSQL: store clients, projects, revision counts */
-let pool;
-let schemaReady;
+let db;
 
-function connectionString() {
-  const url = process.env.DATABASE_URL?.trim();
-  if (url) return url;
-
-  const host = process.env.PGHOST ?? "localhost";
-  const port = Number(process.env.PGPORT ?? 5432);
-  const user = process.env.PGUSER;
-  const password = process.env.PGPASSWORD ?? "";
-  const database = process.env.PGDATABASE;
-  if (!user || !database) {
-    throw new Error("Set DATABASE_URL or PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE for PostgreSQL");
-  }
-  const enc = encodeURIComponent(password);
-  return `postgresql://${encodeURIComponent(user)}:${enc}@${host}:${port}/${encodeURIComponent(database)}`;
+function getDb() {
+  if (!db) db = new Database(DB_PATH);
+  return db;
 }
 
-export function getPool() {
-  if (!pool) {
-    pool = new Pool({ connectionString: connectionString() });
-  }
-  return pool;
+export function initDb() {
+  const d = getDb();
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS clients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_user_id TEXT NOT NULL UNIQUE,
+      private_channel_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      phase TEXT NOT NULL DEFAULT 'intake',
+      revision_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
 }
 
-/** Run once; safe to call multiple times (deduped). */
-export async function initDb() {
-  if (!schemaReady) {
-    schemaReady = (async () => {
-      const p = getPool();
-      const client = await p.connect();
-      try {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS clients (
-            id BIGSERIAL PRIMARY KEY,
-            discord_user_id TEXT NOT NULL UNIQUE,
-            private_channel_id TEXT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-          );
-          CREATE TABLE IF NOT EXISTS projects (
-            id BIGSERIAL PRIMARY KEY,
-            client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-            name TEXT NOT NULL,
-            phase TEXT NOT NULL DEFAULT 'intake',
-            revision_count INTEGER NOT NULL DEFAULT 0,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-          );
-        `);
-      } finally {
-        client.release();
-      }
-    })();
-  }
-  await schemaReady;
+export function getClientByDiscordId(discordUserId) {
+  return getDb().prepare("SELECT * FROM clients WHERE discord_user_id = ?").get(discordUserId) ?? null;
+}
+
+export function getClientByChannelId(channelId) {
+  return getDb().prepare("SELECT * FROM clients WHERE private_channel_id = ?").get(channelId) ?? null;
+}
+
+export function upsertClient(discordUserId, privateChannelId) {
+  return getDb()
+    .prepare(
+      `INSERT INTO clients (discord_user_id, private_channel_id)
+       VALUES (?, ?)
+       ON CONFLICT (discord_user_id) DO UPDATE SET private_channel_id = excluded.private_channel_id
+       RETURNING *`
+    )
+    .get(discordUserId, privateChannelId);
 }

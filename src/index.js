@@ -8,7 +8,7 @@ if (!token) {
   process.exit(1);
 }
 
-await initDb();
+initDb();
 
 const client = createBotClient();
 await client.login(token);
