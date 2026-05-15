@@ -1,27 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-<<<<<<< HEAD
 import Database from "better-sqlite3";
 
-/** SQLite: clients, projects, PRD versions, approvals */
-=======
-import { fileURLToPath } from "url";
-import Database from "better-sqlite3";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
->>>>>>> 2a9e6c547ea6d302239e84a3b3f6fef58a908aed
 let db;
 
 export function getDb() {
   if (db) return db;
-<<<<<<< HEAD
-=======
-  const file = process.env.DATABASE_PATH ?? path.resolve(__dirname, "../../freewancer.db");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  db = new Database(file);
-  return db;
-}
->>>>>>> 2a9e6c547ea6d302239e84a3b3f6fef58a908aed
 
   const file = process.env.DATABASE_PATH ?? "./data/freewancer.sqlite";
   const dir = path.dirname(file);
@@ -33,7 +17,6 @@ export function getDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       discord_user_id TEXT NOT NULL UNIQUE,
       private_channel_id TEXT,
-      phase TEXT NOT NULL DEFAULT 'intake',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS projects (
@@ -41,11 +24,7 @@ export function getDb() {
       client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
       channel_id TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL DEFAULT 'Proyek',
-<<<<<<< HEAD
-      phase TEXT NOT NULL DEFAULT 'discussion',
-=======
       phase TEXT NOT NULL DEFAULT 'intake',
->>>>>>> 2a9e6c547ea6d302239e84a3b3f6fef58a908aed
       allowed_revisions INTEGER NOT NULL DEFAULT 2,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -65,19 +44,39 @@ export function getDb() {
       note TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS contracts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+      prd_id INTEGER NOT NULL REFERENCES prd_documents(id),
+      content_json TEXT NOT NULL,
+      draft_pdf_path TEXT NOT NULL,
+      signed_pdf_path TEXT,
+      freelancer_signed INTEGER NOT NULL DEFAULT 0,
+      client_signed INTEGER NOT NULL DEFAULT 0,
+      freelancer_signature_path TEXT,
+      client_signature_path TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
-<<<<<<< HEAD
+
+  migrate(db);
   return db;
-=======
-  // migrations for existing DBs
-  try { d.exec("ALTER TABLE clients ADD COLUMN phase TEXT NOT NULL DEFAULT 'intake'"); } catch (_) {}
-  try { d.exec("ALTER TABLE projects ADD COLUMN channel_id TEXT"); } catch (_) {}
-  try { d.exec("ALTER TABLE projects ADD COLUMN phase TEXT NOT NULL DEFAULT 'intake'"); } catch (_) {}
-  try { d.exec("ALTER TABLE projects ADD COLUMN allowed_revisions INTEGER NOT NULL DEFAULT 2"); } catch (_) {}
->>>>>>> 2a9e6c547ea6d302239e84a3b3f6fef58a908aed
 }
 
-// ── clients ──────────────────────────────────────────────────────────────────
+function migrate(d) {
+  const alters = [
+    "ALTER TABLE projects ADD COLUMN channel_id TEXT",
+    "ALTER TABLE projects ADD COLUMN phase TEXT NOT NULL DEFAULT 'intake'",
+    "ALTER TABLE projects ADD COLUMN allowed_revisions INTEGER NOT NULL DEFAULT 2",
+  ];
+  for (const sql of alters) {
+    try {
+      d.exec(sql);
+    } catch {
+      /* column exists */
+    }
+  }
+}
 
 export function getClientByDiscordId(discordUserId) {
   return getDb().prepare("SELECT * FROM clients WHERE discord_user_id = ?").get(discordUserId) ?? null;
@@ -98,15 +97,6 @@ export function upsertClient(discordUserId, privateChannelId) {
     .get(discordUserId, privateChannelId);
 }
 
-<<<<<<< HEAD
-=======
-export function updateClientPhase(discordUserId, phase) {
-  getDb().prepare("UPDATE clients SET phase = ? WHERE discord_user_id = ?").run(phase, discordUserId);
-}
-
-// ── projects ──────────────────────────────────────────────────────────────────
-
->>>>>>> 2a9e6c547ea6d302239e84a3b3f6fef58a908aed
 export function getProjectByChannelId(channelId) {
   return getDb().prepare("SELECT * FROM projects WHERE channel_id = ?").get(channelId) ?? null;
 }
@@ -117,13 +107,8 @@ export function ensureProject(clientId, channelId, name = "Proyek") {
   return getDb()
     .prepare(
       `INSERT INTO projects (client_id, channel_id, name, phase)
-<<<<<<< HEAD
-       VALUES (?, ?, ?, 'discussion')
-       RETURNING *`,
-=======
        VALUES (?, ?, ?, 'intake')
-       RETURNING *`
->>>>>>> 2a9e6c547ea6d302239e84a3b3f6fef58a908aed
+       RETURNING *`,
     )
     .get(clientId, channelId, name);
 }
@@ -132,21 +117,12 @@ export function setProjectPhase(projectId, phase) {
   getDb().prepare("UPDATE projects SET phase = ? WHERE id = ?").run(phase, projectId);
 }
 
-<<<<<<< HEAD
 export function getLatestPrd(projectId) {
   return (
     getDb()
       .prepare("SELECT * FROM prd_documents WHERE project_id = ? ORDER BY version DESC LIMIT 1")
       .get(projectId) ?? null
   );
-=======
-// ── PRD documents ─────────────────────────────────────────────────────────────
-
-export function getLatestPrd(projectId) {
-  return getDb()
-    .prepare("SELECT * FROM prd_documents WHERE project_id = ? ORDER BY version DESC LIMIT 1")
-    .get(projectId) ?? null;
->>>>>>> 2a9e6c547ea6d302239e84a3b3f6fef58a908aed
 }
 
 export function insertPrd(projectId, version, content) {
@@ -154,11 +130,7 @@ export function insertPrd(projectId, version, content) {
     .prepare(
       `INSERT INTO prd_documents (project_id, version, content, freelancer_approved, client_approved)
        VALUES (?, ?, ?, 0, 0)
-<<<<<<< HEAD
        RETURNING *`,
-=======
-       RETURNING *`
->>>>>>> 2a9e6c547ea6d302239e84a3b3f6fef58a908aed
     )
     .get(projectId, version, content);
 }
@@ -185,4 +157,32 @@ export function getPrdRevisionNotes(prdId) {
   return getDb()
     .prepare("SELECT * FROM prd_revision_notes WHERE prd_id = ? ORDER BY created_at ASC")
     .all(prdId);
+}
+
+export function getContractByProjectId(projectId) {
+  return getDb().prepare("SELECT * FROM contracts WHERE project_id = ?").get(projectId) ?? null;
+}
+
+export function insertContract(projectId, prdId, contentJson, draftPdfPath) {
+  return getDb()
+    .prepare(
+      `INSERT INTO contracts (project_id, prd_id, content_json, draft_pdf_path)
+       VALUES (?, ?, ?, ?)
+       RETURNING *`,
+    )
+    .get(projectId, prdId, contentJson, draftPdfPath);
+}
+
+export function setContractSignature(contractId, role, signaturePath) {
+  const signedCol = role === "freelancer" ? "freelancer_signed" : "client_signed";
+  const pathCol = role === "freelancer" ? "freelancer_signature_path" : "client_signature_path";
+  getDb()
+    .prepare(`UPDATE contracts SET ${signedCol} = 1, ${pathCol} = ? WHERE id = ?`)
+    .run(signaturePath, contractId);
+  return getDb().prepare("SELECT * FROM contracts WHERE id = ?").get(contractId);
+}
+
+export function setContractSignedPdf(contractId, signedPdfPath) {
+  getDb().prepare("UPDATE contracts SET signed_pdf_path = ? WHERE id = ?").run(signedPdfPath, contractId);
+  return getDb().prepare("SELECT * FROM contracts WHERE id = ?").get(contractId);
 }
