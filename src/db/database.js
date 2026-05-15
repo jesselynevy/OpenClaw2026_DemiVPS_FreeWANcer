@@ -98,7 +98,21 @@ export function getClientByDiscordId(discordUserId) {
 }
 
 export function getClientByChannelId(channelId) {
-  return getDb().prepare("SELECT * FROM clients WHERE private_channel_id = ?").get(channelId) ?? null;
+  return (
+    getDb()
+      .prepare(
+        `SELECT c.* FROM clients c
+         JOIN projects p ON p.client_id = c.id
+         WHERE p.channel_id = ?`
+      )
+      .get(channelId) ?? null
+  );
+}
+
+export function getProjectsByClientId(clientId) {
+  return getDb()
+    .prepare("SELECT * FROM projects WHERE client_id = ? ORDER BY created_at DESC")
+    .all(clientId);
 }
 
 export function upsertClient(discordUserId, privateChannelId) {

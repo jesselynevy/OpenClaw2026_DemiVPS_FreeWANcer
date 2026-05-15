@@ -1,6 +1,7 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import { onReady } from "./handlers/onReady.js";
 import { onMessage } from "./handlers/onMessage.js";
+import { onInteraction } from "./handlers/onInteraction.js";
 
 /** Discord client setup + event registration */
 export function createBotClient() {
@@ -16,6 +17,7 @@ export function createBotClient() {
 
   client.once(Events.ClientReady, onReady(client));
   client.on("messageCreate", onMessage(client));
+  client.on(Events.InteractionCreate, onInteraction(client));
   client.on(Events.Error, (err) => console.error("Discord client error:", err.message));
 
   return client;
