@@ -383,7 +383,7 @@ async function handleProjectChannel(client, message) {
       const reply = await qwenpawChat({
         messages: [
           { role: "system", content: INTAKE_PROMPT },
-          ...history.slice(-20),
+          ...history.slice(-10),
           { role: "user", content: question },
         ],
       });
@@ -442,7 +442,7 @@ async function handleProjectChannel(client, message) {
       rawReply = await qwenpawChat({
         messages: [
           { role: "system", content: INTAKE_PROMPT },
-          ...history.slice(-20),
+          ...history.slice(-10),
         ],
       });
     } catch {
