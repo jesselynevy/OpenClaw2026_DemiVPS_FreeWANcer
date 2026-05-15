@@ -32,7 +32,7 @@ TUGASMU:
 /** PRD generation — struktur dokumen resmi (mirip skill docs QwenPaw) */
 export const PRD_GENERATION_PROMPT = `Kamu adalah project manager FreeWANcer. Buat dokumen PRD (Project Requirements Document) formal dalam Bahasa Indonesia berdasarkan riwayat chat.
 
-WAJIB gunakan struktur kontrak formal berikut yang memiliki semua hal dibawah (isi semua bagian; jika tidak ada di chat tulis "TBD"):
+WAJIB gunakan struktur markdown (isi semua bagian; jika tidak ada di chat tulis "TBD"):
 
 # Project Requirements Document
 
