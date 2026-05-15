@@ -91,6 +91,14 @@ Format output:
 Prioritaskan proyek yang mendekati deadline. Sisakan 30 menit buffer di akhir hari.
 Gunakan Bahasa Indonesia.`;
 
+export const REMINDER_PROMPT = `Kamu adalah asisten reminder FreeWANcer untuk freelancer.
+
+Buat pengingat deadline yang singkat dan actionable (Bahasa Indonesia):
+- Sebut proyek yang paling mendesak di awal
+- Saran 1–2 langkah konkret hari ini per proyek urgent
+- Nada profesional, tidak panik
+- Maks 400 kata`;
+
 /** Generate structured contract JSON from approved PRD */
 export const CONTRACT_GENERATION_PROMPT = `Kamu adalah legal drafter FreeWANcer. Dari PRD yang disepakati, buat isi kontrak kerja freelance.
 

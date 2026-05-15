@@ -37,6 +37,12 @@ import {
   downloadSignatureImage,
   isImageAttachment,
 } from "../../services/contractService.js";
+import { parseDeadlineInput, tryExtractDeadlineFromPrd } from "../../services/deadlineParser.js";
+import { setProjectDeadline } from "../../db/database.js";
+import {
+  postDailySchedule,
+  postDeadlineReminders,
+} from "../../services/schedulerService.js";
 
 const histories = new Map();
 const INTAKE_TRIGGER = "mulai-disini";
@@ -51,9 +57,15 @@ function sanitizeChannelName(username) {
     .concat("-project");
 }
 
+function hasFreelancerRole(member) {
+  const roleId = process.env.FREELANCER_ROLE_ID ?? process.env.STAFF_ROLE_ID;
+  if (!roleId || !member) return false;
+  return member.roles.cache.has(roleId);
+}
+
 function isFreelancer(message, clientRecord) {
-  const staffRoleId = process.env.STAFF_ROLE_ID;
-  if (staffRoleId) return message.member?.roles.cache.has(staffRoleId) ?? false;
+  if (hasFreelancerRole(message.member)) return true;
+  if (process.env.STAFF_ROLE_ID || process.env.FREELANCER_ROLE_ID) return false;
   return message.author.id !== clientRecord.discord_user_id;
 }
 
@@ -216,6 +228,11 @@ async function handleSetujuPrd(message, project, clientRecord) {
   }
 
   await message.reply(`${parts.join(" ")}\nMembuat kontrak PDF...`);
+  void tryExtractDeadlineFromPrd(project.id, updated.content).then((dl) => {
+    if (dl) {
+      message.channel.send(`📅 Deadline proyek tercatat: **${dl}** (dari PRD).`);
+    }
+  });
   try {
     await createAndSendContract(
       message.channel,
@@ -342,6 +359,44 @@ async function handleContractSignature(message, project, clientRecord) {
   }
 }
 
+// ─── Deadline (private channel) ────────────────────────────────────────────────
+
+async function handleSetDeadline(message, project, clientRecord) {
+  if (!isFreelancer(message, clientRecord)) {
+    await message.reply("Hanya freelancer yang bisa set deadline (`deadline YYYY-MM-DD`).");
+    return;
+  }
+  const raw = message.content.replace(/^deadline\s*/i, "").trim();
+  const date = parseDeadlineInput(raw);
+  if (!date) {
+    await message.reply("Format: `deadline 2026-05-20` atau `deadline 20/05/2026`");
+    return;
+  }
+  setProjectDeadline(project.id, date);
+  await message.reply(`Deadline proyek diset: **${date}** (masuk jadwal harian & reminder).`);
+}
+
+// ─── Scheduler test commands ───────────────────────────────────────────────────
+
+async function handleSchedulerChannel(client, message) {
+  if (!hasFreelancerRole(message.member)) {
+    await message.reply("Hanya freelancer.");
+    return;
+  }
+  const cmd = message.content.trim().toLowerCase();
+  if (cmd === "test-jadwal") {
+    await message.reply("Mengirim jadwal harian...");
+    await postDailySchedule(client);
+    return true;
+  }
+  if (cmd === "test-reminder") {
+    await message.reply("Mengirim reminder...");
+    await postDeadlineReminders(client);
+    return true;
+  }
+  return false;
+}
+
 // ─── Private project channel ───────────────────────────────────────────────────
 
 async function handleProjectChannel(client, message) {
@@ -406,6 +461,10 @@ async function handleProjectChannel(client, message) {
   }
   if (cmd.startsWith("revisi-prd")) {
     await handleRevisiPrd(message, project, clientRecord);
+    return;
+  }
+  if (cmd.startsWith("deadline")) {
+    await handleSetDeadline(message, project, clientRecord);
     return;
   }
 
@@ -504,6 +563,16 @@ export function onMessage(client) {
     if (intakeId && message.channelId === intakeId) {
       await handleIntake(message);
       return;
+    }
+
+    const jadwalId = process.env.JADWAL_HARIAN_CHANNEL_ID;
+    const reminderId = process.env.REMINDER_CHANNEL_ID;
+    if (
+      (jadwalId && message.channelId === jadwalId) ||
+      (reminderId && message.channelId === reminderId)
+    ) {
+      const handled = await handleSchedulerChannel(client, message);
+      if (handled) return;
     }
 
     await handleProjectChannel(client, message);

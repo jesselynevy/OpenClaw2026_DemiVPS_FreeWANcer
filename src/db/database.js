@@ -68,6 +68,8 @@ function migrate(d) {
     "ALTER TABLE projects ADD COLUMN channel_id TEXT",
     "ALTER TABLE projects ADD COLUMN phase TEXT NOT NULL DEFAULT 'intake'",
     "ALTER TABLE projects ADD COLUMN allowed_revisions INTEGER NOT NULL DEFAULT 2",
+    "ALTER TABLE projects ADD COLUMN deadline_at TEXT",
+    "ALTER TABLE projects ADD COLUMN last_reminder_at TEXT",
   ];
   for (const sql of alters) {
     try {
@@ -185,4 +187,64 @@ export function setContractSignature(contractId, role, signaturePath) {
 export function setContractSignedPdf(contractId, signedPdfPath) {
   getDb().prepare("UPDATE contracts SET signed_pdf_path = ? WHERE id = ?").run(signedPdfPath, contractId);
   return getDb().prepare("SELECT * FROM contracts WHERE id = ?").get(contractId);
+}
+
+export function setProjectDeadline(projectId, deadlineAt) {
+  getDb().prepare("UPDATE projects SET deadline_at = ? WHERE id = ?").run(deadlineAt, projectId);
+  return getDb().prepare("SELECT * FROM projects WHERE id = ?").get(projectId);
+}
+
+export function markProjectReminded(projectId) {
+  getDb()
+    .prepare("UPDATE projects SET last_reminder_at = datetime('now') WHERE id = ?")
+    .run(projectId);
+}
+
+/** Active projects with client info for scheduler */
+export function getActiveProjectsForSchedule() {
+  return getDb()
+    .prepare(
+      `SELECT p.*, c.discord_user_id AS client_discord_id
+       FROM projects p
+       JOIN clients c ON c.id = p.client_id
+       WHERE p.phase IN ('discussion', 'prd_review', 'contract_signing', 'execution')
+       ORDER BY
+         CASE WHEN p.deadline_at IS NULL THEN 1 ELSE 0 END,
+         p.deadline_at ASC`,
+    )
+    .all();
+}
+
+/** Projects with deadline within N days (includes overdue) */
+export function getProjectsDueSoon(withinDays = 3) {
+  return getDb()
+    .prepare(
+      `SELECT p.*, c.discord_user_id AS client_discord_id
+       FROM projects p
+       JOIN clients c ON c.id = p.client_id
+       WHERE p.phase IN ('discussion', 'prd_review', 'contract_signing', 'execution')
+         AND p.deadline_at IS NOT NULL
+         AND date(p.deadline_at) <= date('now', '+' || ? || ' days')
+       ORDER BY p.deadline_at ASC`,
+    )
+    .all(withinDays);
+}
+
+/** Due soon and not reminded today */
+export function getProjectsNeedingReminder(withinDays = 3) {
+  return getDb()
+    .prepare(
+      `SELECT p.*, c.discord_user_id AS client_discord_id
+       FROM projects p
+       JOIN clients c ON c.id = p.client_id
+       WHERE p.phase IN ('discussion', 'prd_review', 'contract_signing', 'execution')
+         AND p.deadline_at IS NOT NULL
+         AND date(p.deadline_at) <= date('now', '+' || ? || ' days')
+         AND (
+           p.last_reminder_at IS NULL
+           OR date(p.last_reminder_at) < date('now')
+         )
+       ORDER BY p.deadline_at ASC`,
+    )
+    .all(withinDays);
 }
