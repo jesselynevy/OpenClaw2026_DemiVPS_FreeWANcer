@@ -9,9 +9,8 @@ Automates project intake, PRD generation, contract creation, and payment managem
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Discord](https://img.shields.io/discord/1504721301317877780
 )](https://discord.gg/eM2Y4Qr3)
-<!-- [![DOKU](https://img.shields.io/badge/Payment-DOKU_MCP-FF1717)](https://www.doku.com) -->
 
-Track: Main Build + **Best Payment Use Case** (DOKU)
+Track: Main Build
 
 </div>
 
@@ -19,14 +18,35 @@ Track: Main Build + **Best Payment Use Case** (DOKU)
 
 ## 📋 Table of Contents
 
-- [Features](#features)
+- [Inspiration](#inspiration)
+- [Features](#key-features)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
-- [Configuration](#configuration)
 - [Project Workflow](#project-workflow)
 - [Commands](#commands)
 - [Architecture](#architecture)
 - [Development](#development)
+
+---
+
+## Inspiration
+
+Every day, freelancers are not only expected to create great work — they are also forced to become:
+- admins,
+- customer service,
+- project managers,
+- invoice collectors,
+- and deadline reminders for themselves.
+
+Research shows that:
+- freelancers spend an average of **15.3 hours/week** on non-billable work,
+- **72%** of freelance projects experience scope creep,
+- **85%** of freelancers have experienced late payments from clients,
+- and **43%** experience burnout due to long working hours and constant deadline pressure.
+
+We realized that many freelancers are not struggling because they lack skill or creativity, but because they are overwhelmed by repetitive operational work.
+
+That inspired us to build **FreeWANcer** — an AI-powered operational assistant that helps freelancers manage clients, projects, documentation, scheduling, and payments automatically so they can focus on what truly matters: creating meaningful work.
 
 ---
 
@@ -138,36 +158,36 @@ npm start
 ┌─────────────────────────────────────────────────────────┐
 │ 1. CLIENT INTAKE (Public Channel)                       │
 │ • Client types: mulai-disini                            │
-│ • Bot asks: jenis pekerjaan, deadline, budget          │
-│ • Bot triggers [HANDOFF] when ready → Phase 2          │
+│ • Bot asks: jenis pekerjaan, deadline, budget           │
+│ • Bot triggers [HANDOFF] when ready → Phase 2           │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
 │ 2. PRIVATE CHANNEL CREATED                              │
 │ • Client gets private channel                           │
 │ • Freelancer joins to discuss                           │
-│ • Both clarify scope, timeline, deliverables           │
+│ • Both clarify scope, timeline, deliverables            │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
 │ 3. PRD GENERATION (Freelancer)                          │
 │ • Freelancer types: buat-prd                            │
-│ • AI creates formal PRD from chat history              │
-│ • Both must approve: setuju-prd                        │
-│ • Revision cycle: revisi-prd <note>                    │
+│ • AI creates formal PRD from chat history               │
+│ • Both must approve: setuju-prd                         │
+│ • Revision cycle: revisi-prd <note>                     │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
 │ 4. CONTRACT GENERATION                                  │
-│ • Auto-generates PDF from approved PRD                 │
-│ • Both sign (upload photo/digital signature)           │
-│ • Final PDF with embedded signatures                   │
+│ • Auto-generates PDF from approved PRD                  │
+│ • Both sign (upload photo/digital signature)            │
+│ • Final PDF with embedded signatures                    │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
 │ 5. EXECUTION                                            │
-│ • Project marked as active                             │
-│ • Work begins per contract terms                       │
+│ • Project marked as active                              │
+│ • Work begins per contract terms                        │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -295,6 +315,24 @@ npm run dev  // Watch console for "Bot is ready!"
 | Additional Revisions | Rp 100,000 each |
 
 *Prices are customizable in `src/agent/prompts.js`*
+
+---
+
+## ⚡ Challenges We Faced
+
+Building FreeWANcer came with several technical and product-design challenges:
+
+- Setting up AI Agents from scratch and connecting to Discord
+- Transforming messy client conversations into structured PRDs and contracts
+- Designing AI prompts that understand project scope and deliverables accurately
+- Managing multi-step workflows between clients and freelancers
+- Building automation while still keeping human collaboration natural
+- Structuring Discord channels dynamically for project-based collaboration
+- Designing scalable approval and document-generation workflows
+- Maintaining project context and chat history for AI reasoning
+- Preventing AI hallucinations when generating formal project documents
+
+> _(More implementation details and technical learnings will be added later during development.)_
 
 ---
 
