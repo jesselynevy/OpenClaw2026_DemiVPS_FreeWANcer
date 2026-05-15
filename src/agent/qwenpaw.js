@@ -4,7 +4,9 @@ export async function qwenpawChat({ messages, temperature = 0.7 } = {}) {
   const key = process.env.QWENPAW_API_KEY;
   const model = process.env.QWENPAW_MODEL;
   if (!base || !key || !model) {
-    throw new Error("Missing QWENPAW_BASE_URL, QWENPAW_API_KEY, or QWENPAW_MODEL");
+    throw new Error(
+      "Missing QWENPAW_BASE_URL, QWENPAW_API_KEY, or QWENPAW_MODEL",
+    );
   }
 
   const res = await fetch(`${base}/v1/chat/completions`, {
