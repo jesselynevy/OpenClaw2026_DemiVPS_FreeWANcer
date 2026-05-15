@@ -16,6 +16,7 @@ export async function qwenpawChat({ messages, temperature = 0.7 } = {}) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ model, messages, temperature }),
+    signal: AbortSignal.timeout(30000),
   });
 
   if (!res.ok) {

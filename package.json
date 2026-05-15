@@ -6,17 +6,13 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "NODE_OPTIONS=--dns-result-order=ipv4first node --watch src/index.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-<<<<<<< HEAD
-    "better-sqlite3": "^11.8.1",
-=======
     "better-sqlite3": "^12.10.0",
->>>>>>> 411f79ad60e0c0fd1fe7bb526b2165acad539ce4
     "discord.js": "^14.17.3",
     "dotenv": "^16.4.7"
   }
