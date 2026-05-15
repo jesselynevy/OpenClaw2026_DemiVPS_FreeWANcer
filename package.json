@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "NODE_OPTIONS=--dns-result-order=ipv4first node --watch src/index.js"
   },
   "engines": {
     "node": ">=20"

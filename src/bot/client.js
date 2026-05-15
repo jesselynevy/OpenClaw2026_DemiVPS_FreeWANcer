@@ -16,6 +16,7 @@ export function createBotClient() {
 
   client.once(Events.ClientReady, onReady(client));
   client.on("messageCreate", onMessage(client));
+  client.on(Events.Error, (err) => console.error("Discord client error:", err.message));
 
   return client;
 }

@@ -19,6 +19,7 @@ export function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       discord_user_id TEXT NOT NULL UNIQUE,
       private_channel_id TEXT,
+      phase TEXT NOT NULL DEFAULT 'intake',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS projects (
@@ -30,6 +31,8 @@ export function initDb() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+  // migration for existing DBs that don't have the phase column yet
+  try { d.exec("ALTER TABLE clients ADD COLUMN phase TEXT NOT NULL DEFAULT 'intake'"); } catch (_) {}
 }
 
 export function getClientByDiscordId(discordUserId) {
@@ -49,4 +52,10 @@ export function upsertClient(discordUserId, privateChannelId) {
        RETURNING *`
     )
     .get(discordUserId, privateChannelId);
+}
+
+export function updateClientPhase(discordUserId, phase) {
+  getDb()
+    .prepare("UPDATE clients SET phase = ? WHERE discord_user_id = ?")
+    .run(phase, discordUserId);
 }

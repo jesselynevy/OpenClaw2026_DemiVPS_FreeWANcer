@@ -1,4 +1,7 @@
 import "dotenv/config";
+
+process.on("unhandledRejection", (err) => console.error("Unhandled rejection:", err?.message ?? err));
+process.on("uncaughtException",  (err) => console.error("Uncaught exception:",  err?.message ?? err));
 import { createBotClient } from "./bot/client.js";
 import { initDb } from "./db/database.js";
 
