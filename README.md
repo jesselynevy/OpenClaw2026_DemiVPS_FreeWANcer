@@ -7,9 +7,9 @@
 Automates project intake, PRD generation, contract creation, and payment management for freelance design & web services.
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Discord](https://img.shields.io/discord/1504721301317877780)](https://discord.gg/eM2Y4Qr3)
+[![Discord](https://img.shields.io/discord/1504721301317877780)](https://discord.gg/ujj7trFgsD)
 
-Track: Main Build
+Track: Main Build, Try the bot by clicking the discord badge or [here](https://discord.gg/ujj7trFgsD)!
 
 </div>
 
