@@ -1,5 +1,5 @@
 /** Calls QwenPaw API (OpenAI-compatible) */
-export async function qwenpawChat({ messages, temperature = 0.7 } = {}) {
+export async function qwenpawChat({ messages, temperature = 0.7, timeoutMs = 60000 } = {}) {
   const base = process.env.QWENPAW_BASE_URL?.replace(/\/$/, "");
   const key = process.env.QWENPAW_API_KEY;
   const model = process.env.QWENPAW_MODEL;
@@ -16,7 +16,7 @@ export async function qwenpawChat({ messages, temperature = 0.7 } = {}) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ model, messages, temperature }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!res.ok) {

@@ -41,6 +41,7 @@ function parseContractJson(raw) {
 async function generateContractContent(prd, { clientTag, freelancerName }) {
   const raw = await qwenpawChat({
     temperature: 0.3,
+    timeoutMs: 90000,
     messages: [
       { role: "system", content: CONTRACT_GENERATION_PROMPT },
       {

@@ -30,6 +30,7 @@ export async function generatePrdFromChannel(channel, project, { clientName, rev
 
   const content = await qwenpawChat({
     temperature: 0.4,
+    timeoutMs: 90000,
     messages: [
       { role: "system", content: PRD_GENERATION_PROMPT },
       {
