@@ -1,35 +1,41 @@
 import { qwenpawChat } from "../agent/qwenpaw.js";
-import { PRD_PROMPT } from "../agent/prompts.js";
-import { updateClientPhase } from "../db/database.js";
+import { getProjectByChannelId, setProjectPhase } from "../db/database.js";
 
 export function isHandoffTrigger(aiResponse) {
   return aiResponse.includes("[HANDOFF]");
 }
 
-// Strip the [HANDOFF] tag from text shown to the client
 export function stripHandoffTag(text) {
   return text.replace("[HANDOFF]", "").trim();
 }
 
 export async function executeHandoff({ guild, discordUserId, privateChannel, history }) {
-  updateClientPhase(discordUserId, "handoff");
+  // Transition project intake → discussion
+  const project = getProjectByChannelId(privateChannel.id);
+  if (project) setProjectPhase(project.id, "discussion");
 
-  // Generate PRD brief from conversation history
-  let brief;
+  // Generate quick intake summary for freelancer
+  let summary;
   try {
-    brief = await qwenpawChat({
+    summary = await qwenpawChat({
       messages: [
-        { role: "system", content: PRD_PROMPT },
-        ...history.slice(-30),
+        {
+          role: "system",
+          content:
+            "Buat ringkasan singkat (maks 5 bullet point) kebutuhan klien berdasarkan percakapan. " +
+            "Bahasa Indonesia. Format: bullet point dengan emoji.",
+        },
+        ...history.slice(-20),
+        { role: "user", content: "Rangkum kebutuhan klien secara singkat." },
       ],
       temperature: 0.3,
     });
   } catch (err) {
-    console.error("Failed to generate PRD:", err);
-    brief = "_Gagal generate brief otomatis. Silakan lihat riwayat percakapan di channel klien._";
+    console.error("Failed to generate handoff summary:", err);
+    summary = "_Gagal generate ringkasan. Lihat riwayat percakapan di channel._";
   }
 
-  // Post structured brief to #notifikasi
+  // Post to #notifikasi
   const notifId = process.env.NOTIFICATIONS_CHANNEL_ID;
   if (notifId) {
     const notifCh = guild.channels.cache.get(notifId);
@@ -37,22 +43,20 @@ export async function executeHandoff({ guild, discordUserId, privateChannel, his
       const staffRoleId = process.env.STAFF_ROLE_ID;
       const mention = staffRoleId ? `<@&${staffRoleId}> ` : "";
       const msg =
-        `${mention}📋 **Brief Proyek Baru Masuk!**\n\n` +
-        `**Klien:** <@${discordUserId}>\n` +
-        `**Channel:** <#${privateChannel.id}>\n\n` +
-        brief;
+        `${mention}🔔 **Klien siap diskusi proyek!**\n\n` +
+        `**Klien:** <@${discordUserId}> — <#${privateChannel.id}>\n\n` +
+        `**Ringkasan kebutuhan:**\n${summary}\n\n` +
+        `Masuk ke <#${privateChannel.id}> dan ketik \`buat-prd\` setelah scope jelas.`;
 
-      // Discord max 2000 chars per message
       for (let i = 0; i < msg.length; i += 2000) {
         await notifCh.send(msg.slice(i, i + 2000));
       }
     }
   }
 
-  // Confirm to client in their private channel
   await privateChannel.send(
-    "✅ **Brief proyekmu sudah dikirim ke freelancer!**\n" +
-    "Tunggu sebentar ya, mereka akan segera menghubungi kamu langsung di channel ini. 🙏\n\n" +
-    "_Sambil nunggu, kalau ada yang mau ditanya ketik `/ai [pertanyaanmu]`_"
+    "✅ **Tim FreeWANcer sudah dinotifikasi!**\n" +
+    "Freelancer akan segera bergabung untuk diskusi lebih detail.\n\n" +
+    "_Sambil menunggu, ketik `/ai [pertanyaan]` kalau ada yang ingin ditanyakan._"
   );
 }
